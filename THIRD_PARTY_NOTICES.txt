@@ -1,0 +1,13 @@
+﻿Vértice PDF — Avisos de software de terceiros
+==========================================
+* PyMuPDF / MuPDF (Artifex) ........ GNU AGPL-3.0 (ou licença comercial da Artifex)
+    Ao redistribuir este programa, cumpra a AGPL-3.0 (incluindo oferecer o código-fonte)
+    ou adquira a licença comercial da Artifex.  https://pymupdf.readthedocs.io/
+* Qt for Python / PySide6 .......... GNU LGPL-3.0   https://www.qt.io/qt-for-python
+* pyHanko / pyhanko-certvalidator .. MIT
+* cryptography .................... Apache-2.0 / BSD
+* Pillow .......................... HPND
+* pytesseract ..................... Apache-2.0
+* Tesseract OCR (opcional) ......... Apache-2.0   https://github.com/tesseract-ocr/tesseract
+* Microsoft Visual C++ Runtime ..... termos de licença da Microsoft
+* Python .......................... PSF License

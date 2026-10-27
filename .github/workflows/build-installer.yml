@@ -1,0 +1,45 @@
+name: Gerar instalador (Windows)
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+permissions:
+  contents: write
+jobs:
+  windows-installer:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt pytest
+      - run: python -m pytest -q tests
+      - run: choco install innosetup -y --no-progress
+      - run: python build.py
+      - name: Teste de instalação (instala, abre, desinstala)
+        shell: pwsh
+        run: |
+          $setup = Get-ChildItem installer\VerticePDF-Setup-*.exe | Select-Object -First 1
+          ./scripts/install_smoke.ps1 -Installer $setup.FullName
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: logs-instalacao
+          path: |
+            ${{ runner.temp }}/setup.log
+            ${{ runner.temp }}/selftest.txt
+          if-no-files-found: ignore
+      - uses: actions/upload-artifact@v4
+        with:
+          name: VerticePDF-Setup
+          path: |
+            installer/*.exe
+            installer/*.sha256
+      - if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            installer/*.exe
+            installer/*.sha256

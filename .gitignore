@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+.venv*/
+build/
+dist/
+installer/
+redist/
+version_info.txt
+selftest_report.txt
+.pytest_cache/
+*.pfx
+*.p12
