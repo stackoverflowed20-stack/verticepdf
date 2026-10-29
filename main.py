@@ -17,7 +17,7 @@ try:
 except ImportError:  # pragma: no cover
     import fitz  # type: ignore
 
-from PySide6.QtCore import QObject, QSettings, QSize, Qt, QTimer, Signal
+from PySide6.QtCore import QEvent, QObject, QSettings, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QActionGroup, QFont, QFontMetrics, QGuiApplication, QIcon, QKeySequence, QPixmap, QShortcut
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from PySide6.QtWidgets import (
@@ -29,7 +29,7 @@ from PySide6.QtWidgets import (
 import ops
 import recovery
 import updater
-from dialogs import BatchDialog, CreateDialog, EncryptDialog, OcrDialog, OrganizeDialog, UpdateDialog
+from dialogs import BatchDialog, CreateDialog, EncryptDialog, OcrDialog, OrganizeDialog, PreferencesDialog, UpdateDialog
 import icons
 from icons import brand_pixmap, icon, render, soft_tile_pixmap
 import ui_common
@@ -522,7 +522,36 @@ class HomePage(QWidget):
             pass
 
 
+class WinButton(QToolButton):
+    """Botão minimizar / maximizar / fechar da barra de título própria."""
+
+    def __init__(self, kind: str, tip: str):
+        super().__init__()
+        self.kind = kind
+        self.setObjectName("winclose" if kind == "win_close" else "winbtn")
+        self.setToolTip(tip)
+        self.setFixedSize(46, 40)
+        self.setFocusPolicy(Qt.NoFocus)
+        self.set_kind(kind)
+
+    def set_kind(self, kind: str) -> None:
+        self.kind = kind
+        self.setIcon(icon("close" if kind == "win_close" else kind, 14))
+
+    def enterEvent(self, e):  # noqa: N802
+        if self.kind == "win_close":
+            self.setIcon(icon("close", 14, "#ffffff"))
+        super().enterEvent(e)
+
+    def leaveEvent(self, e):  # noqa: N802
+        if self.kind == "win_close":
+            self.setIcon(icon("close", 14))
+        super().leaveEvent(e)
+
+
 class MainWindow(QMainWindow):
+    RESIZE_MARGIN = 6
+
     def __init__(self):
         super().__init__()
         self.setWindowTitle(APP_NAME)
@@ -553,18 +582,131 @@ class MainWindow(QMainWindow):
         self.home = self._make_home()
         self.tabs.addTab(self.home, QIcon(render("home", icons.ICON_COLOR, 36)), "Início")
 
+        self.setWindowFlag(Qt.FramelessWindowHint, True)   # a barra de título é a própria barra de abas
         plus = QToolButton()
         plus.setIcon(icon("plus", 18))
-        plus.setToolTip("Abrir PDF")
+        plus.setToolTip("Abrir PDF  (Ctrl+O)")
         plus.clicked.connect(self.open_dialog)
-        plus.setFixedSize(36, 36)
+        plus.setFixedSize(32, 32)
+        logo = QLabel()
+        logo.setPixmap(brand_pixmap(22))
+        logo.setFixedSize(22, 22)
+        logo.setScaledContents(True)
+        left = QWidget()
+        left.setObjectName("titlecorner")
+        left.setAttribute(Qt.WA_StyledBackground, True)
+        lh = QHBoxLayout(left)
+        lh.setContentsMargins(12, 4, 4, 0)
+        lh.setSpacing(6)
+        lh.addWidget(logo)
+        lh.addWidget(plus)
         QShortcut(QKeySequence("Ctrl+K"), self, activated=self._focus_search)
-        self.tabs.setCornerWidget(plus, Qt.TopLeftCorner)
-        self.tabs.setCornerWidget(self._build_app_menu(), Qt.TopRightCorner)
+        QShortcut(QKeySequence("Ctrl+O"), self, activated=self.open_dialog)
+        QShortcut(QKeySequence("Ctrl+N"), self, activated=lambda: self.run_tool("create"))
+        self.tabs.setCornerWidget(left, Qt.TopLeftCorner)
+
+        right = QWidget()
+        right.setObjectName("titlecorner")
+        right.setAttribute(Qt.WA_StyledBackground, True)
+        rh = QHBoxLayout(right)
+        rh.setContentsMargins(0, 0, 0, 0)
+        rh.setSpacing(0)
+        rh.addWidget(self._build_app_menu())
+        rh.addSpacing(6)
+        self.btn_min = WinButton("win_min", "Minimizar")
+        self.btn_min.clicked.connect(self.showMinimized)
+        self.btn_max = WinButton("win_max", "Maximizar")
+        self.btn_max.clicked.connect(self._toggle_maximize)
+        self.btn_close = WinButton("win_close", "Fechar")
+        self.btn_close.clicked.connect(self.close)
+        for b in (self.btn_min, self.btn_max, self.btn_close):
+            rh.addWidget(b)
+        self.tabs.setCornerWidget(right, Qt.TopRightCorner)
+        self.tabs.tabBar().installEventFilter(self)       # arrastar a janela pela área vazia das abas
+        QApplication.instance().installEventFilter(self)  # redimensionar pelas bordas
+        self._edge_cursor = False
         self.refresh_recent()
         geo = self.settings.value("geometry")
         if geo:
             self.restoreGeometry(geo)
+
+    # ---- barra de título própria (janela sem moldura) ------------------------------------------
+    def _toggle_maximize(self) -> None:
+        self.showNormal() if self.isMaximized() else self.showMaximized()
+
+    def changeEvent(self, e):  # noqa: N802
+        super().changeEvent(e)
+        if e.type() == QEvent.WindowStateChange and hasattr(self, "btn_max"):
+            maxed = self.isMaximized()
+            self.btn_max.set_kind("win_restore" if maxed else "win_max")
+            self.btn_max.setToolTip("Restaurar" if maxed else "Maximizar")
+
+    def _edges_at(self, gp) -> Qt.Edges:
+        r, m = self.frameGeometry(), self.RESIZE_MARGIN
+        if not r.contains(gp):
+            return Qt.Edges()
+        edges = Qt.Edges()
+        if gp.x() - r.left() < m:
+            edges |= Qt.LeftEdge
+        elif r.right() - gp.x() < m:
+            edges |= Qt.RightEdge
+        if gp.y() - r.top() < m:
+            edges |= Qt.TopEdge
+        elif r.bottom() - gp.y() < m:
+            edges |= Qt.BottomEdge
+        return edges
+
+    def _set_edge_cursor(self, edges) -> None:
+        shape = None
+        if edges:
+            horiz = bool(edges & (Qt.LeftEdge | Qt.RightEdge))
+            vert = bool(edges & (Qt.TopEdge | Qt.BottomEdge))
+            diag_back = (edges & Qt.LeftEdge and edges & Qt.TopEdge) or (edges & Qt.RightEdge and edges & Qt.BottomEdge)
+            shape = (Qt.SizeFDiagCursor if diag_back else Qt.SizeBDiagCursor) if horiz and vert \
+                else Qt.SizeHorCursor if horiz else Qt.SizeVerCursor
+        if shape is not None and not self._edge_cursor:
+            QApplication.setOverrideCursor(shape)
+            self._edge_cursor = True
+        elif shape is not None:
+            QApplication.changeOverrideCursor(shape)
+        elif self._edge_cursor:
+            QApplication.restoreOverrideCursor()
+            self._edge_cursor = False
+
+    def eventFilter(self, obj, ev):  # noqa: N802
+        t = ev.type()
+        if obj is self.tabs.tabBar():
+            if t == QEvent.MouseButtonPress and ev.button() == Qt.LeftButton \
+                    and self.tabs.tabBar().tabAt(ev.position().toPoint()) < 0:
+                handle = self.windowHandle()
+                if handle is not None and not self.isFullScreen():
+                    handle.startSystemMove()
+                    return True
+            elif t == QEvent.MouseButtonDblClick and ev.button() == Qt.LeftButton \
+                    and self.tabs.tabBar().tabAt(ev.position().toPoint()) < 0:
+                self._toggle_maximize()
+                return True
+            return False
+        if t in (QEvent.MouseMove, QEvent.MouseButtonPress) and isinstance(obj, QWidget) \
+                and obj.window() is self and not self.isMaximized() and not self.isFullScreen():
+            gp = ev.globalPosition().toPoint()
+            edges = self._edges_at(gp)
+            if t == QEvent.MouseMove:
+                self._set_edge_cursor(edges)
+            elif edges and ev.button() == Qt.LeftButton and self.windowHandle() is not None:
+                self.windowHandle().startSystemResize(edges)
+                return True
+        elif t == QEvent.Leave and obj is self and self._edge_cursor:
+            self._set_edge_cursor(Qt.Edges())
+        return False
+
+    def show_preferences(self) -> None:
+        dlg = PreferencesDialog(ui_common.appearance_pref(), self.auto_update_enabled(), self)
+        if dlg.exec():
+            look, auto = dlg.values()
+            self.settings.setValue("auto_update", "true" if auto else "false")
+            if look != ui_common.appearance_pref():
+                self.set_appearance(look)
 
     def _make_home(self) -> HomePage:
         home = HomePage()
@@ -660,11 +802,14 @@ class MainWindow(QMainWindow):
         updater.launch_installer(installer_path)
         QApplication.quit()
 
+    def auto_update_enabled(self) -> bool:
+        return str(self.settings.value("auto_update", "true")).lower() != "false"
+
     def auto_check_updates(self) -> None:
         """Uma vez por dia, em segundo plano: avisa discretamente se houver versão nova."""
         url = self.update_url()
         now = datetime.now().timestamp()
-        if not url or now - float(self.settings.value("last_update_check", 0) or 0) < 86400:
+        if not url or not self.auto_update_enabled() or now - float(self.settings.value("last_update_check", 0) or 0) < 86400:
             return
         self.settings.setValue("last_update_check", now)
 
@@ -798,6 +943,10 @@ class MainWindow(QMainWindow):
         self.tabs.tabBar().setTabButton(idx, QTabBar.RightSide, close)
         self.tabs.setCurrentIndex(idx)
         view.open_requested.connect(self.open_path)
+        view.open_dialog_requested.connect(self.open_dialog)
+        view.create_requested.connect(lambda: self.run_tool("create"))
+        view.prefs_requested.connect(self.show_preferences)
+        view.recent_provider = self.recent
         view.new_document.connect(self._new_document)
         view.title_changed.connect(lambda name, v=view: self._retitle(v, name))
         view.modified_changed.connect(lambda m, v=view: self._retitle(v, None))
@@ -1000,6 +1149,17 @@ def selftest(report_path: str | None) -> int:
         (r,) = signing.verify(out.read_bytes())
         assert r["intact"] and r["valid"], r
 
+    def export():
+        import zipfile
+        import exporters
+        doc = fitz.open(pdf)
+        for name, fn in (("a.docx", exporters.export_docx), ("a.xlsx", exporters.export_xlsx),
+                         ("a.pptx", exporters.export_pptx)):
+            fn(doc, str(tmp / name))
+            assert zipfile.is_zipfile(tmp / name), name
+        assert len(exporters.export_images(doc, str(tmp / "a.png"), "png", 72)) == 1
+        return "Word, Excel, PowerPoint e imagem"
+
     def ocr():
         exe = ops.find_tesseract()
         if not exe:
@@ -1016,6 +1176,7 @@ def selftest(report_path: str | None) -> int:
     step("interface", window)
     step("edição, anotações e fontes", engine)
     step("assinatura digital", signature)
+    step("exportação", export)
     step("OCR", ocr)
     lines.append("\nRESULTADO: " + ("TUDO OK" if ok else "COM FALHAS"))
     text = "\n".join(lines)

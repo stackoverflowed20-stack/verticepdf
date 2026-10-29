@@ -36,7 +36,7 @@ def log(msg: str) -> None:
 
 def version() -> str:
     ns: dict = {}
-    exec((ROOT / "version.py").read_text(encoding="utf-8"), ns)
+    exec((ROOT / "version.py").read_text(encoding="utf-8-sig"), ns)
     return ns["__version__"]
 
 
@@ -127,8 +127,13 @@ def prepare_tesseract() -> bool:
     if not download(TESS_URL, setup, 20_000_000):
         return False
     seven = find_7z()
+    if not seven and IS_WIN and shutil.which("winget"):
+        print("  7-Zip não encontrado; tentando instalar via winget…")
+        subprocess.run(["winget", "install", "-e", "--id", "7zip.7zip", "--silent",
+                        "--accept-package-agreements", "--accept-source-agreements"])
+        seven = find_7z()
     if not seven:
-        print("  AVISO: 7-Zip não encontrado. Instale com: winget install 7zip.7zip")
+        print("  AVISO: 7-Zip não encontrado. Instale em https://www.7-zip.org e rode o build de novo.")
         return False
     raw = REDIST / "tesseract_raw"
     shutil.rmtree(raw, ignore_errors=True)

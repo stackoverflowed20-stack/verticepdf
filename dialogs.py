@@ -1283,3 +1283,86 @@ class UpdateDialog(TaskDialog):
         w.failed.connect(failed)
         self._worker = w
         w.start()
+
+
+# --------------------------------------------------------------------------
+# Arquivo › Propriedades do documento / Preferências
+# --------------------------------------------------------------------------
+def _pdf_date(raw: str) -> str:
+    """'D:20260315143000+00'00'' -> '15/03/2026 14:30'."""
+    import re
+    m = re.match(r"D:(\d{4})(\d{2})?(\d{2})?(\d{2})?(\d{2})?", raw or "")
+    if not m:
+        return raw or "—"
+    y, mo, d, h, mi = (m.group(i) or "" for i in range(1, 6))
+    out = f"{d or '01'}/{mo or '01'}/{y}"
+    return out + (f" {h}:{mi or '00'}" if h else "")
+
+
+class PropertiesDialog(PolishedDialog):
+    def __init__(self, doc, path: str | None, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Propriedades do documento")
+        self.setMinimumWidth(520)
+        meta = doc.metadata or {}
+        v = QVBoxLayout(self)
+        form = QFormLayout()
+        form.setLabelAlignment(Qt.AlignRight)
+        self.fields: dict[str, QLineEdit] = {}
+        for key, label in (("title", "Título"), ("author", "Autor"), ("subject", "Assunto"), ("keywords", "Palavras-chave")):
+            e = QLineEdit(meta.get(key) or "")
+            self.fields[key] = e
+            form.addRow(label + ":", e)
+        self._orig = {k: e.text() for k, e in self.fields.items()}
+
+        def info(text: str) -> QLabel:
+            lb = QLabel(text)
+            lb.setObjectName("dim")
+            lb.setTextInteractionFlags(Qt.TextSelectableByMouse)
+            lb.setWordWrap(True)
+            return lb
+
+        size_txt = "—"
+        if path and Path(path).is_file():
+            size_txt = ops.fmt_size(Path(path).stat().st_size)
+        r = doc[0].rect if doc.page_count else None
+        page_txt = f"{r.width:.0f} × {r.height:.0f} pt  ({r.width * 25.4 / 72:.0f} × {r.height * 25.4 / 72:.0f} mm)" if r else "—"
+        form.addRow("Arquivo:", info(path or "(documento novo, ainda não salvo)"))
+        form.addRow("Tamanho:", info(size_txt))
+        form.addRow("Páginas:", info(str(doc.page_count)))
+        form.addRow("Tamanho da página:", info(page_txt))
+        form.addRow("Versão do PDF:", info(meta.get("format") or "—"))
+        form.addRow("Protegido por senha:", info("Sim" if doc.is_encrypted else "Não"))
+        form.addRow("Criado em:", info(_pdf_date(meta.get("creationDate", ""))))
+        form.addRow("Modificado em:", info(_pdf_date(meta.get("modDate", ""))))
+        form.addRow("Criado com:", info(meta.get("creator") or "—"))
+        form.addRow("Gerado por:", info(meta.get("producer") or "—"))
+        v.addLayout(form)
+        v.addWidget(_buttons(self, "Aplicar"))
+
+    def changes(self) -> dict | None:
+        new = {k: e.text().strip() for k, e in self.fields.items()}
+        old = {k: v.strip() for k, v in self._orig.items()}
+        return new if new != old else None
+
+
+class PreferencesDialog(PolishedDialog):
+    def __init__(self, appearance: str, auto_update: bool, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Preferências")
+        self.setMinimumWidth(400)
+        v = QVBoxLayout(self)
+        form = QFormLayout()
+        self.look = QComboBox()
+        for label, key in (("Seguir o sistema", "system"), ("Claro", "light"), ("Escuro", "dark")):
+            self.look.addItem(label, key)
+        self.look.setCurrentIndex(max(0, self.look.findData(appearance)))
+        form.addRow("Aparência:", self.look)
+        self.auto = QCheckBox("Verificar atualizações automaticamente (uma vez por dia)")
+        self.auto.setChecked(auto_update)
+        form.addRow("", self.auto)
+        v.addLayout(form)
+        v.addWidget(_buttons(self, "Salvar"))
+
+    def values(self) -> tuple[str, bool]:
+        return self.look.currentData(), self.auto.isChecked()

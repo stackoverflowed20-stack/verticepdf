@@ -14,7 +14,7 @@ for pkg in ("pymupdf", "pyhanko", "pyhanko_certvalidator", "pytesseract", "oscry
     binaries += b
     hiddenimports += h
 
-hiddenimports += ["PIL.Image", "PySide6.QtPrintSupport"]
+hiddenimports += ["PIL.Image", "PySide6.QtPrintSupport", "exporters", "_pptx_base"]
 
 # --- Enxugar o pacote: só Core/Gui/Widgets/PrintSupport são usados -------------------
 UNUSED_QT = ["QtWebEngineCore", "QtWebEngineWidgets", "QtWebEngineQuick", "QtWebChannel", "QtWebSockets",

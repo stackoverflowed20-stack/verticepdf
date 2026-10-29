@@ -25,10 +25,11 @@ import pagetools
 import recovery
 import signing
 import textedit
-from dialogs import (BatchDialog, CreateDialog, CropDialog, EncryptDialog, ExtractDialog, FindReplaceDialog,
+from dialogs import (PropertiesDialog, BatchDialog, CreateDialog, CropDialog, EncryptDialog, ExtractDialog, FindReplaceDialog,
                      HeaderFooterDialog, OcrDialog, OrganizeDialog, STAMPS, WatermarkDialog, CertSignDialog, FormDialog, ParagraphEditDialog, SignatureDialog,
                      make_stamp_png, show_verification)
 from icons import color_dot, icon
+import exporters
 from ui_common import ACCENT, Toast, last_dir, remember_dir
 
 TOOL_INFO = {
@@ -217,6 +218,10 @@ class PdfView(QWidget):
     title_changed = Signal(str)
     open_requested = Signal(str)
     new_document = Signal(bytes, str)
+    open_dialog_requested = Signal()
+    create_requested = Signal()
+    prefs_requested = Signal()
+    recent_provider = staticmethod(lambda: [])   # a janela principal substitui
 
     signature_png: bytes | None = None  # compartilhada entre abas
 
@@ -363,7 +368,18 @@ class PdfView(QWidget):
 
     def _build_topbar(self, root: QVBoxLayout) -> None:
         bar, h = self._bar("topbar")
+        h.setContentsMargins(10, 0, 10, 0)
+        bar.setFixedHeight(42)
         root.addWidget(bar)
+
+        file_btn = QToolButton()
+        file_btn.setObjectName("filebtn")
+        file_btn.setText("Arquivo")
+        file_btn.setToolTip("Abrir, salvar, exportar e mais")
+        file_btn.setToolButtonStyle(Qt.ToolButtonTextOnly)
+        file_btn.setPopupMode(QToolButton.InstantPopup)
+        file_btn.setCursor(Qt.PointingHandCursor)
+        h.addWidget(file_btn)
 
         left = self._toolbar()
         h.addWidget(left)
@@ -371,25 +387,20 @@ class PdfView(QWidget):
                                    "Painel de miniaturas e marcadores", True, "panel")
         self.panel_act.setChecked(True)
 
-        # Salvar: botão dividido (Salvar / Salvar como…)
         self.save_act = QAction(icon("save"), "Salvar", self)
         self.save_act.setShortcut(QKeySequence("Ctrl+S"))
         self.save_act.setShortcutContext(Qt.WidgetWithChildrenShortcut)
         self.save_act.setToolTip("Salvar  (Ctrl+S)")
         self.save_act.triggered.connect(self.save)
         self.addAction(self.save_act)
-        save_as = QAction("Salvar como…", self)
-        save_as.setShortcut(QKeySequence("Ctrl+Shift+S"))
-        save_as.setShortcutContext(Qt.WidgetWithChildrenShortcut)
-        save_as.triggered.connect(self.save_as)
-        self.addAction(save_as)
-        save_menu = QMenu(self)
-        save_menu.addAction(save_as)
+        self.save_as_act = QAction(icon("save"), "Salvar como…", self)
+        self.save_as_act.setShortcut(QKeySequence("Ctrl+Shift+S"))
+        self.save_as_act.setShortcutContext(Qt.WidgetWithChildrenShortcut)
+        self.save_as_act.triggered.connect(self.save_as)
+        self.addAction(self.save_as_act)
         save_btn = QToolButton()
         save_btn.setDefaultAction(self.save_act)
-        save_btn.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
-        save_btn.setMenu(save_menu)
-        save_btn.setPopupMode(QToolButton.MenuButtonPopup)
+        save_btn.setToolButtonStyle(Qt.ToolButtonIconOnly)
         h.addWidget(save_btn)
 
         mid = self._toolbar()
@@ -404,6 +415,7 @@ class PdfView(QWidget):
         alt.triggered.connect(self.do_redo)
         self.addAction(alt)
         self._act(mid, "", self.print_doc, "Ctrl+P", "Imprimir", False, "print")
+        file_btn.setMenu(self._build_file_menu())
         mid.setMinimumWidth(mid.sizeHint().width() + 4)   # nunca esconde desfazer/refazer/imprimir
 
         h.addStretch(1)
@@ -420,7 +432,7 @@ class PdfView(QWidget):
 
         self.search = QLineEdit()
         self.search.setPlaceholderText("Buscar no documento")
-        self.search.setFixedWidth(150)
+        self.search.setFixedSize(160, 30)
         self.search.setClearButtonEnabled(True)
         self.search.addAction(icon("search", 16, "#8794a7"), QLineEdit.LeadingPosition)
         self.search.returnPressed.connect(self.find_next)
@@ -445,7 +457,7 @@ class PdfView(QWidget):
         wrap = QWidget()
         wrap.setObjectName("ribbon")
         wrap.setAttribute(Qt.WA_StyledBackground, True)
-        wrap.setFixedHeight(58)
+        wrap.setFixedHeight(44)
         wl = QHBoxLayout(wrap)
         wl.setContentsMargins(0, 0, 0, 0)
         self.ribbon_stack = QStackedWidget()
@@ -458,7 +470,7 @@ class PdfView(QWidget):
         def page() -> QHBoxLayout:
             w = QWidget()
             lay = QHBoxLayout(w)
-            lay.setContentsMargins(12, 5, 12, 5)
+            lay.setContentsMargins(12, 3, 12, 3)
             lay.setSpacing(2)
             lay.addStretch(1)
             self.ribbon_stack.addWidget(w)
@@ -468,7 +480,7 @@ class PdfView(QWidget):
         def sep(lay: QHBoxLayout) -> None:
             f = QFrame()
             f.setObjectName("ribsep")
-            f.setFixedSize(1, 26)
+            f.setFixedSize(1, 22)
             lay.addSpacing(6)
             lay.addWidget(f)
             lay.addSpacing(6)
@@ -827,13 +839,127 @@ class PdfView(QWidget):
             return
         self._structural(lambda: self.doc.delete_page(i), i)
 
+    # ---- menu Arquivo ------------------------------------------------------------------------
+    def _build_file_menu(self) -> QMenu:
+        m = QMenu(self)
+
+        def add(menu: QMenu, text: str, icon_name: str, slot, shortcut_label: str = "") -> QAction:
+            act = menu.addAction(icon(icon_name, 18), text + (f"\t{shortcut_label}" if shortcut_label else ""))
+            act.triggered.connect(slot)
+            return act
+
+        add(m, "Abrir", "folder", self.open_dialog_requested.emit, "Ctrl+O")
+        self._recent_menu = m.addMenu(icon("clock", 18), "Abrir recentes")
+        self._recent_menu.aboutToShow.connect(self._fill_recent_menu)
+        add(m, "Criar PDF", "plus", self.create_requested.emit, "Ctrl+N")
+        m.addSeparator()
+        self.save_act.setIcon(icon("save", 18))
+        m.addAction(self.save_act)
+        m.addAction(self.save_as_act)
+        exp = m.addMenu(icon("export", 18), "Exportar para")
+        add(exp, "Word", "word", lambda: self.export_as("docx"))
+        add(exp, "Excel", "excel", lambda: self.export_as("xlsx"))
+        add(exp, "PowerPoint", "ppt", lambda: self.export_as("pptx"))
+        add(exp, "Imagem", "image", lambda: self.export_as("image"))
+        m.addSeparator()
+        self.reveal_act = add(m, "Abrir local do arquivo", "folder", self.reveal_in_folder)
+        props = add(m, "Propriedades do documento", "info", self.show_properties, "Ctrl+D")
+        sc = QShortcut(QKeySequence("Ctrl+D"), self, activated=self.show_properties)
+        sc.setContext(Qt.WidgetWithChildrenShortcut)
+        m.addSeparator()
+        add(m, "Imprimir", "print", self.print_doc, "Ctrl+P")
+        add(m, "Preferências", "gear", self.prefs_requested.emit)
+        m.aboutToShow.connect(lambda: self.reveal_act.setEnabled(bool(self.path)))
+        return m
+
+    def _fill_recent_menu(self) -> None:
+        self._recent_menu.clear()
+        paths = [p for p in self.recent_provider() if Path(p).is_file()][:10]
+        if not paths:
+            self._recent_menu.addAction("(nenhum arquivo recente)").setEnabled(False)
+            return
+        for p in paths:
+            act = self._recent_menu.addAction(Path(p).name)
+            act.setToolTip(p)
+            act.triggered.connect(lambda _=False, q=p: self.open_requested.emit(q))
+
+    def export_as(self, kind: str) -> None:
+        if self.doc.page_count == 0:
+            return
+        names = {"docx": ("Exportar para Word", "Documento do Word (*.docx)", ".docx"),
+                 "xlsx": ("Exportar para Excel", "Planilha do Excel (*.xlsx)", ".xlsx"),
+                 "pptx": ("Exportar para PowerPoint", "Apresentação do PowerPoint (*.pptx)", ".pptx"),
+                 "image": ("Exportar como imagem", "Imagem PNG (*.png);;Imagem JPEG (*.jpg)", ".png")}
+        title, flt, ext = names[kind]
+        stem = Path(self.path).stem if self.path else "documento"
+        folder = Path(self.path).parent if self.path else Path(last_dir())
+        out, chosen = QFileDialog.getSaveFileName(self, title, str(folder / (stem + ext)), flt)
+        if not out:
+            return
+        remember_dir(out)
+        if kind == "image":
+            ext = ".jpg" if "jpg" in chosen.lower() or out.lower().endswith((".jpg", ".jpeg")) else ".png"
+        if not out.lower().endswith(ext) and not (kind == "image" and out.lower().endswith(".jpeg")):
+            out += ext
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        try:
+            if kind == "docx":
+                info = exporters.export_docx(self.doc, out)
+                note = "Exportado para Word."
+                if info["empty_pages"]:
+                    note += f" {info['empty_pages']} página(s) sem texto (digitalizadas) ficaram em branco: use o OCR antes."
+            elif kind == "xlsx":
+                info = exporters.export_xlsx(self.doc, out)
+                note = (f"Exportado para Excel: {info['tables']} tabela(s) detectada(s)." if info["tables"]
+                        else "Exportado para Excel (nenhuma tabela detectada: o texto foi colocado linha a linha).")
+            elif kind == "pptx":
+                exporters.export_pptx(self.doc, out)
+                note = "Exportado para PowerPoint (uma página por slide, como imagem)."
+            else:
+                files = exporters.export_images(self.doc, out, "jpg" if ext == ".jpg" else "png")
+                note = f"{len(files)} imagem(ns) salva(s)."
+        except Exception as exc:  # noqa: BLE001
+            QApplication.restoreOverrideCursor()
+            QMessageBox.warning(self, "Exportar", f"Não foi possível exportar: {exc}")
+            return
+        QApplication.restoreOverrideCursor()
+        self.notify(note)
+        if len(note) > 60:
+            QMessageBox.information(self, "Exportar", note)
+
+    def reveal_in_folder(self) -> None:
+        if not self.path:
+            QMessageBox.information(self, "Abrir local do arquivo", "O documento ainda não foi salvo.")
+            return
+        import os
+        import subprocess
+        from PySide6.QtCore import QUrl
+        from PySide6.QtGui import QDesktopServices
+        if os.name == "nt":
+            subprocess.Popen(["explorer", "/select,", os.path.normpath(self.path)])
+        else:
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(Path(self.path).parent)))
+
+    def show_properties(self) -> None:
+        dlg = PropertiesDialog(self.doc, self.path, self)
+        if not dlg.exec():
+            return
+        changes = dlg.changes()
+        if not changes:
+            return
+        keep = {k: v for k, v in (self.doc.metadata or {}).items()
+                if k in ("creator", "producer", "creationDate", "modDate", "trapped")}
+        self._structural(lambda: self.doc.set_metadata({**keep, **changes}), self.current_page())
+        self.notify("Propriedades atualizadas (valem ao salvar).")
+
     def _build_propbar(self, root: QVBoxLayout) -> None:
         """Barra contextual: mostra só as opções da ferramenta ativa."""
         bar, h = self._bar("propbar")
-        bar.setFixedHeight(46)
+        bar.setFixedHeight(32)
         h.setContentsMargins(16, 0, 16, 0)
         h.setSpacing(10)
         root.addWidget(bar)
+        self.propbar = bar
         self.tool_title = QLabel()
         self.tool_title.setObjectName("tooltitle")
         self.tool_desc = QLabel()
@@ -1159,7 +1285,9 @@ class PdfView(QWidget):
         visible = TOOL_PROPS.get(name, ())
         for key, w in self._props.items():
             w.setVisible(key in visible)
-        self.hint.setText("")
+        # Sem opções para ajustar: a faixa some (mais espaço para a página) e a dica vai para a barra de status
+        self.propbar.setVisible(bool(visible))
+        self.hint.setText("" if visible or name == "select" else f"{title} · {desc}")
 
     def pick_image(self) -> bool:
         path, _ = QFileDialog.getOpenFileName(self, "Escolher imagem", last_dir(),

@@ -178,6 +178,43 @@ def _share(p):
     _line(p, (8.3, 10.8), (15.7, 6.7)); _line(p, (8.3, 13.2), (15.7, 17.3))
 
 
+def _clock(p):
+    p.drawEllipse(QPointF(12, 12), 9, 9); _line(p, (12, 7), (12, 12), (16, 14))
+
+
+def _gear(p):
+    import math
+    p.drawEllipse(QPointF(12, 12), 3, 3)
+    for k in range(8):
+        a = k * math.pi / 4
+        _line(p, (12 + 6.2 * math.cos(a), 12 + 6.2 * math.sin(a)), (12 + 9 * math.cos(a), 12 + 9 * math.sin(a)))
+    p.drawEllipse(QPointF(12, 12), 6.2, 6.2)
+
+
+def _export(p):
+    _line(p, (12, 15), (12, 4)); _line(p, (8, 8), (12, 4), (16, 8)); _line(p, (5, 12), (5, 20), (19, 20), (19, 12))
+
+
+def _word(p):
+    p.drawRoundedRect(QRectF(4, 4, 16, 16), 2, 2); _line(p, (7.5, 8.5), (9.7, 15.5), (12, 10), (14.3, 15.5), (16.5, 8.5))
+
+
+def _excel(p):
+    p.drawRoundedRect(QRectF(4, 4, 16, 16), 2, 2); _line(p, (8, 8), (16, 16)); _line(p, (16, 8), (8, 16))
+
+
+def _ppt(p):
+    p.drawRoundedRect(QRectF(4, 4, 16, 16), 2, 2); _line(p, (9.5, 16), (9.5, 8), (13, 8), (15, 9.8), (13, 12), (9.5, 12))
+
+
+def _win_min(p): _line(p, (5, 12), (19, 12))
+def _win_max(p): p.drawRect(QRectF(5.5, 5.5, 13, 13))
+
+
+def _win_restore(p):
+    p.drawRect(QRectF(5.5, 8.5, 10, 10)); _line(p, (8.5, 8.5), (8.5, 5.5), (18.5, 5.5), (18.5, 15.5), (15.5, 15.5))
+
+
 def _broom(p):
     _line(p, (19, 3), (11, 12)); _poly(p, (11, 12), (5, 11), (3, 20), (13, 18))
 

@@ -1,5 +1,5 @@
-﻿APP_NAME = "Vértice PDF"
-__version__ = "1.9.1"
+APP_NAME = "Vértice PDF"
+__version__ = "1.10.0"
 
 # Onde procurar novas versões. Preencha com o endereço da API do seu repositório, ex.:
 #   "https://api.github.com/repos/SEU-USUARIO/SEU-REPOSITORIO/releases/latest"

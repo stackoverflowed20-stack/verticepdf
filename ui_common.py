@@ -126,7 +126,7 @@ QToolTip {{ background: {NAVY}; color: #ffffff; border: 0; padding: 5px 9px; }}
 /* abas de documentos */
 QTabWidget::pane {{ border: 0; }}
 QTabBar {{ background: {TABBAR}; }}
-QTabBar::tab {{ background: transparent; color: {DIM}; padding: 0 14px 0 14px; margin: 8px 2px 0 2px; height: 36px;
+QTabBar::tab {{ background: transparent; color: {DIM}; padding: 0 12px 0 12px; margin: 8px 2px 0 2px; height: 32px;
                 border-top-left-radius: 8px; border-top-right-radius: 8px; min-width: 84px; font-weight: 500; }}
 QTabBar::tab:selected {{ background: {BG0}; color: {TEXT}; }}
 QTabBar::tab:hover:!selected {{ background: {TAB_HOVER}; color: {TEXT}; }}
@@ -208,6 +208,13 @@ QListWidget#thumbs::item {{ background: transparent; }}
 QToolBar {{ background: transparent; border: 0; spacing: 2px; padding: 0; }}
 QToolBar::separator {{ background: {BORDER}; width: 1px; height: 1px; margin: 6px 7px; }}
 QWidget#topbar {{ background: {BG0}; border-bottom: 1px solid {BORDER}; }}
+QWidget#topbar QToolButton {{ padding: 4px 8px; }}
+QWidget#titlecorner {{ background: {TABBAR}; }}
+QToolButton#filebtn {{ padding: 4px 8px 4px 10px; font-weight: 500; color: {TEXT}; }}
+QToolButton#winbtn {{ background: transparent; border: 0; border-radius: 0; padding: 0; min-width: 46px; max-width: 46px; }}
+QToolButton#winbtn:hover {{ background: {HOVER2}; }}
+QToolButton#winclose {{ background: transparent; border: 0; border-radius: 0; padding: 0; min-width: 46px; max-width: 46px; }}
+QToolButton#winclose:hover {{ background: #e81123; }}
 QWidget#propbar {{ background: {PROPBAR}; border-bottom: 1px solid {BORDER}; }}
 QWidget#ribbon {{ background: {BG0}; border-bottom: 1px solid {BORDER}; }}
 QFrame#ribsep {{ background: {BORDER}; border: 0; }}
@@ -216,7 +223,7 @@ QTabBar#ribbontabs::tab {{ background: transparent; color: {DIM}; padding: 7px 9
     border: 0; border-bottom: 2px solid transparent; font-weight: 500; }}
 QTabBar#ribbontabs::tab:hover {{ color: {TEXT}; }}
 QTabBar#ribbontabs::tab:selected {{ color: {ACCENT}; border-bottom: 2px solid {ACCENT}; font-weight: 600; }}
-QToolButton#rb {{ padding: 6px 10px; border-radius: 8px; color: {TEXT}; }}
+QToolButton#rb {{ padding: 4px 10px; border-radius: 8px; color: {TEXT}; }}
 QToolButton#rb:hover {{ background: {HOVER2}; }}
 QToolButton#rb:checked {{ background: {ACCENT}; color: #ffffff; }}
 QToolButton#rb:disabled {{ color: {FAINT}; }}
